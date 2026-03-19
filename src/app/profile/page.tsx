@@ -24,7 +24,7 @@ import {
   AccessTime,
   Refresh,
   Insights,
-  TimelineIcon,
+  Timeline, // Fixed: Changed from TimelineIcon to Timeline
 } from "@mui/icons-material";
 import NavBar from "../components/NavBar";
 import { getAppTheme } from "../theme";
@@ -80,12 +80,19 @@ export default function ProfilePage() {
     localStorage.setItem("darkMode", JSON.stringify(next));
   };
 
-  const logout = () => {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("currentUser");
-    setUser(null);
-    router.push("/auth/login");
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("currentUser");
+      setUser(null);
+      window.location.href = "/auth/login";
+    }
   };
 
   const fetchTodos = async (userId: string, showLoading = false) => {
@@ -664,7 +671,7 @@ export default function ProfilePage() {
                       spacing={1}
                       mb={2}
                     >
-                      <TimelineIcon color="primary" />
+                      <Timeline color="primary" /> {/* Fixed: Changed from TimelineIcon to Timeline */}
                       <Typography variant="h6" fontWeight={700}>
                         Next 7 days
                       </Typography>

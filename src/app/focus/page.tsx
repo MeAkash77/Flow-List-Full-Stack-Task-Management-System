@@ -29,7 +29,7 @@ import NavBar from "../components/NavBar";
 import { getAppTheme } from "../theme";
 import { TodoItem, TodoPriority } from "@/types/todo";
 
-const parseDate = (value?: string) => {
+const parseDate = (value?: string | null) => {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -45,17 +45,21 @@ const priorityOrder: Record<TodoPriority, number> = {
 };
 
 export default function FocusPage() {
+  const [mounted, setMounted] = useState(false);
   const [todos, setTodos] = useState<TodoItem[]>([]);
-  const [user, setUser] = useState<{ id: number; username: string } | null>(
+  const [user, setUser] = useState<{ id: string; username: string } | null>(
     null,
   );
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [loading, setLoading] = useState(true);
   const [focusMinutes, setFocusMinutes] = useState(25);
   const [secondsLeft, setSecondsLeft] = useState(focusMinutes * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [activeTask, setActiveTask] = useState<TodoItem | null>(null);
-  const theme = useMemo(() => getAppTheme(isDarkMode), [isDarkMode]);
+  const theme = useMemo(() => 
+    mounted ? getAppTheme(isDarkMode) : getAppTheme(true), 
+    [isDarkMode, mounted]
+  );
   const router = useRouter();
 
   const chipGroupSx = {
@@ -85,26 +89,46 @@ export default function FocusPage() {
     localStorage.setItem("darkMode", JSON.stringify(next));
   };
 
-  const logout = () => {
-    localStorage.removeItem("currentUser");
-    setUser(null);
-    router.push("/auth/login");
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("currentUser");
+      setUser(null);
+      window.location.href = "/auth/login";
+    }
   };
 
-  const fetchTodos = async (userId: number, showLoading = false) => {
+  const fetchTodos = async (userId: string, showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
-      const response = await fetch(`/api/todos?userId=${userId}`);
-      const data: TodoItem[] = await response.json();
-      setTodos(data);
+      const accessToken = localStorage.getItem("accessToken");
+      const response = await fetch(`/api/todos?userId=${userId}`, {
+        headers: {
+          "Authorization": `Bearer ${accessToken}`
+        }
+      });
+      const data = await response.json();
+      
+      // Ensure we always have an array
+      const todosArray = Array.isArray(data) ? data : [];
+      setTodos(todosArray);
     } catch (err) {
       console.error("Error fetching todos:", err);
+      setTodos([]);
     } finally {
       if (showLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
+    setMounted(true);
+    
     const storedDarkMode = JSON.parse(
       localStorage.getItem("darkMode") || "true",
     );
@@ -112,13 +136,16 @@ export default function FocusPage() {
   }, []);
 
   useEffect(() => {
+    const accessToken = localStorage.getItem("accessToken");
     const storedUser = JSON.parse(
       localStorage.getItem("currentUser") || "null",
     );
-    if (!storedUser) {
+    
+    if (!storedUser || !accessToken) {
       router.push("/auth/login");
       return;
     }
+    
     setUser(storedUser);
     fetchTodos(storedUser.id, true);
   }, [router]);
@@ -148,8 +175,11 @@ export default function FocusPage() {
     return end;
   }, [today]);
 
+  // ✅ FIXED: Safe focus candidates with array check
   const focusCandidates = useMemo(() => {
-    const ranked = todos
+    const todosArray = Array.isArray(todos) ? todos : [];
+    
+    const ranked = todosArray
       .filter((t) => !t.completed)
       .sort((a, b) => {
         const aDate = parseDate(a.dueDate);
@@ -162,6 +192,7 @@ export default function FocusPage() {
           (priorityOrder[b.priority || "medium"] ?? 1)
         );
       });
+      
     const todayTasks = ranked.filter((t) => {
       const date = parseDate(t.dueDate);
       return (
@@ -170,6 +201,7 @@ export default function FocusPage() {
         date.getTime() <= todayEnd.getTime()
       );
     });
+    
     const overdue = ranked.filter((t) => {
       const date = parseDate(t.dueDate);
       return date && date < today;
@@ -186,23 +218,42 @@ export default function FocusPage() {
     return `${minutes}:${seconds}`;
   };
 
-  const toggleCompletion = async (todoId: number) => {
+  const toggleCompletion = async (todoId: string) => {
     if (!user) return;
     try {
+      const accessToken = localStorage.getItem("accessToken");
       const response = await fetch(`/api/todos`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${accessToken}`
+        },
         body: JSON.stringify({
           userId: user.id,
           todoId,
           completed: !todos.find((t) => t.id === todoId)?.completed,
         }),
       });
-      if (response.ok) fetchTodos(user.id);
+      if (response.ok) await fetchTodos(user.id);
     } catch (err) {
       console.error("Error toggling completion:", err);
     }
   };
+
+  // Show loading state on first render
+  if (!mounted || loading) {
+    return (
+      <div style={{ 
+        minHeight: "100vh", 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "center",
+        fontFamily: "system-ui, -apple-system, sans-serif"
+      }}>
+        <div>Loading focus mode...</div>
+      </div>
+    );
+  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -270,7 +321,7 @@ export default function FocusPage() {
                     variant="contained"
                     color="secondary"
                     startIcon={<Refresh />}
-                    onClick={() => fetchTodos(user?.id || 0, true)}
+                    onClick={() => fetchTodos(user?.id || "", true)}
                     sx={{ color: "#ffffff" }}
                   >
                     Refresh
