@@ -1,4 +1,5 @@
-# Flowlist - A Full-Stack To-Do Application with Next.js
+# Flowlist - A Full-Stack-Task-Management-System with Next.js
+
 
 Welcome to **Flowlist**, a full-stack, lightweight, and simple to-do application built using **Next.js** with both backend and frontend integrated seamlessly.
 
