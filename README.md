@@ -1,4 +1,5 @@
-# Flowlist - A Full-Stack To-Do Application with Next.js
+# Flowlist - A Full Stack Task Management System with Next.js
+
 
 Welcome to **Flowlist**, a full-stack, lightweight, and simple to-do application built using **Next.js** with both backend and frontend integrated seamlessly.
 
@@ -32,6 +33,10 @@ This project shows the power of **Next.js** and serves as a practical demonstrat
 ## 🌟 **Features**
 
 - Full-stack application with Next.js for both frontend and backend
+- Backend (MANDATORY): Node.js + TypeScript + SQL + JWT + CRUD + pagination/filter/search
+- Frontend : Next.js + auth + dashboard + CRUD UI
+- Auth (JWT, refresh token)
+- CRUD APIs, DB + ORM, Validation & error handling
 - Full authentication system (Register and Login)
 - Dark and Light mode
 - User-specific to-do lists with different categories
@@ -221,7 +226,7 @@ Ensure you have the following installed:
 ### **2. Clone the Repository**
 
 ```bash
-git clone https://github.com/hoangsonww/ToDo-App-NextJS-Fullstack.git
+git clone https://github.com/MeAkash77/Flowlist-Full-Stack-Task-Management-System.git
 cd ToDo-App-NextJS-Fullstack
 ```
 
