@@ -33,6 +33,8 @@ This project shows the power of **Next.js** and serves as a practical demonstrat
 ## 🌟 **Features**
 
 - Full-stack application with Next.js for both frontend and backend
+- Backend (MANDATORY): Node.js + TypeScript + SQL + JWT + CRUD + pagination/filter/search
+- Frontend : Next.js + auth + dashboard + CRUD UI
 - Full authentication system (Register and Login)
 - Dark and Light mode
 - User-specific to-do lists with different categories
