@@ -1,4 +1,5 @@
-"use client";
+// src/app/insights/page.tsx
+'use client';
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -15,6 +16,11 @@ import {
   LinearProgress,
   Divider,
   Button,
+  Menu,
+  MenuItem,
+  Tooltip,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import {
   Insights,
@@ -22,10 +28,23 @@ import {
   Flag,
   CalendarMonth,
   Refresh,
+  Download,
+  Description,
+  PictureAsPdf,
+  TrendingUp,
+  RadioButtonUnchecked,
+  Speed,
+  EmojiEvents,
+  ShowChart,
+  Settings,
+  AutoAwesome,
 } from "@mui/icons-material";
 import NavBar from "../components/NavBar";
 import { getAppTheme } from "../theme";
 import { TodoItem } from "@/types/todo";
+import { exportToCSV, exportToPDF, getExportSummary } from "@/utils/exportUtils";
+import AnalyticsDashboard from "../components/AnalyticsDashboard";
+import AutomationRules from "../components/AutomationRules";
 
 const parseDate = (value?: string | null) => {
   if (!value) return null;
@@ -44,6 +63,9 @@ export default function InsightsPage() {
   );
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [exportAnchorEl, setExportAnchorEl] = useState<null | HTMLElement>(null);
+  const [tabValue, setTabValue] = useState(0);
+  
   const theme = useMemo(() => 
     mounted ? getAppTheme(isDarkMode) : getAppTheme(true), 
     [isDarkMode, mounted]
@@ -54,6 +76,7 @@ export default function InsightsPage() {
     backgroundColor: isDarkMode ? "#0f1f1a" : "#ffffff",
     border: "1px solid",
     borderColor: isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
+    borderRadius: 3,
   };
 
   const chipTone = isDarkMode
@@ -92,7 +115,7 @@ export default function InsightsPage() {
     }
   };
 
-  // ✅ FIXED: Handle paginated API response
+  // Handle paginated API response
   const fetchTodos = async (userId: string, showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
@@ -104,17 +127,13 @@ export default function InsightsPage() {
       });
       const data = await response.json();
       
-      // ✅ Handle paginated response format
       let todosArray: TodoItem[] = [];
       
       if (Array.isArray(data)) {
-        // Old format: direct array of tasks
         todosArray = data;
       } else if (data.tasks && Array.isArray(data.tasks)) {
-        // New paginated format: { tasks: [], pagination: {...} }
         todosArray = data.tasks;
       } else {
-        // Fallback for any other format
         todosArray = [];
       }
       
@@ -159,7 +178,7 @@ export default function InsightsPage() {
     return end;
   }, [today]);
 
-  // ✅ FIXED: Safe stats calculation with array checks
+  // Safe stats calculation with array checks
   const stats = useMemo(() => {
     const todosArray = Array.isArray(todos) ? todos : [];
     
@@ -215,6 +234,30 @@ export default function InsightsPage() {
     [stats.categoryMap],
   );
 
+  // Export handlers
+  const handleExportClick = (event: React.MouseEvent<HTMLElement>) => {
+    setExportAnchorEl(event.currentTarget);
+  };
+  
+  const handleExportClose = () => {
+    setExportAnchorEl(null);
+  };
+  
+  const handleExportCSV = () => {
+    exportToCSV(todos);
+    handleExportClose();
+  };
+  
+  const handleExportPDF = () => {
+    exportToPDF(todos, user?.username || "User");
+    handleExportClose();
+  };
+
+  // Handle tab change
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+  };
+
   // Show loading state on first render
   if (!mounted || loading) {
     return (
@@ -251,146 +294,173 @@ export default function InsightsPage() {
         />
 
         <Container maxWidth="lg" sx={{ py: 4 }}>
-          <Paper
-            elevation={0}
-            sx={{
-              p: 3,
-              mb: 3,
-              background: isDarkMode
-                ? "linear-gradient(135deg, #0f3326, #0d5a3f)"
-                : "linear-gradient(135deg, #0f8f5f, #0a6c45)",
-              color: "#ffffff",
+          {/* Header with Export Button */}
+          <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h4" fontWeight={800}>
+              Insights & Analytics
+            </Typography>
+            
+            <div>
+              <Tooltip title="Export Data">
+                <Button
+                  variant="contained"
+                  startIcon={<Download />}
+                  onClick={handleExportClick}
+                  sx={{ color: "#ffffff" }}
+                >
+                  Export
+                </Button>
+              </Tooltip>
+              <Menu
+                anchorEl={exportAnchorEl}
+                open={Boolean(exportAnchorEl)}
+                onClose={handleExportClose}
+              >
+                <MenuItem onClick={handleExportCSV}>
+                  <Description sx={{ mr: 1 }} />
+                  Export as CSV
+                </MenuItem>
+                <MenuItem onClick={handleExportPDF}>
+                  <PictureAsPdf sx={{ mr: 1 }} />
+                  Export as PDF
+                </MenuItem>
+              </Menu>
+            </div>
+          </Box>
+
+          {/* Summary Cards */}
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper elevation={0} sx={{ p: 3, backgroundColor: isDarkMode ? "#0f1f1a" : "#ffffff", borderRadius: 3 }}>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <TrendingUp sx={{ fontSize: 40, color: "#4caf50" }} />
+                  <Box>
+                    <Typography variant="h4" fontWeight={700}>{stats.completionRate}%</Typography>
+                    <Typography variant="body2" color="text.secondary">Completion Rate</Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper elevation={0} sx={{ p: 3, backgroundColor: isDarkMode ? "#0f1f1a" : "#ffffff", borderRadius: 3 }}>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <CheckCircle sx={{ fontSize: 40, color: "#4caf50" }} />
+                  <Box>
+                    <Typography variant="h4" fontWeight={700}>{stats.completed}</Typography>
+                    <Typography variant="body2" color="text.secondary">Completed Tasks</Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper elevation={0} sx={{ p: 3, backgroundColor: isDarkMode ? "#0f1f1a" : "#ffffff", borderRadius: 3 }}>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <RadioButtonUnchecked sx={{ fontSize: 40, color: "#ff9800" }} />
+                  <Box>
+                    <Typography variant="h4" fontWeight={700}>{stats.active}</Typography>
+                    <Typography variant="body2" color="text.secondary">Active Tasks</Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper elevation={0} sx={{ p: 3, backgroundColor: isDarkMode ? "#0f1f1a" : "#ffffff", borderRadius: 3 }}>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <Flag sx={{ fontSize: 40, color: "#f44336" }} />
+                  <Box>
+                    <Typography variant="h4" fontWeight={700}>{stats.total}</Typography>
+                    <Typography variant="body2" color="text.secondary">Total Tasks</Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          {/* Tabs Navigation */}
+          <Paper 
+            elevation={0} 
+            sx={{ 
+              mb: 3, 
+              backgroundColor: isDarkMode ? "#0f1f1a" : "#ffffff",
+              borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+              borderRadius: 2,
             }}
           >
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={8}>
-                <Typography variant="h5" fontWeight={800} gutterBottom>
-                  Insight dashboard
-                </Typography>
-                <Typography variant="body1" sx={{ opacity: 0.9 }}>
-                  Spot patterns across categories and priorities. Celebrate
-                  progress and surface the next best action.
-                </Typography>
-                <Box sx={{ ...chipGroupSx, mt: 2 }}>
-                  <Chip
-                    icon={<CheckCircle sx={{ color: "#b2f5ea" }} />}
-                    label={`${stats.completionRate}% complete`}
-                    sx={{
-                      color: "#e9fffa",
-                      backgroundColor: "rgba(255,255,255,0.12)",
-                    }}
-                  />
-                  <Chip
-                    icon={<CalendarMonth sx={{ color: "#b2f5ea" }} />}
-                    label={`${stats.todayCount} due today`}
-                    sx={{
-                      color: "#e9fffa",
-                      backgroundColor: "rgba(255,255,255,0.12)",
-                    }}
-                  />
-                  <Chip
-                    icon={<Flag sx={{ color: "#b2f5ea" }} />}
-                    label={`${stats.highPriority} high-priority`}
-                    sx={{
-                      color: "#e9fffa",
-                      backgroundColor: "rgba(255,255,255,0.12)",
-                    }}
-                  />
-                </Box>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Stack spacing={1.5} alignItems="flex-end">
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    startIcon={<Refresh />}
-                    onClick={() => fetchTodos(user?.id || "", true)}
-                    sx={{ color: "#ffffff" }}
-                  >
-                    Refresh data
-                  </Button>
-                  <Paper
-                    elevation={0}
-                    sx={{
-                      p: 2,
-                      width: "100%",
-                      backgroundColor: "rgba(255,255,255,0.12)",
-                      color: "#ffffff",
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                      Completion rate
-                    </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={stats.completionRate}
-                      sx={{
-                        height: 10,
-                        borderRadius: 5,
-                        backgroundColor: "rgba(255,255,255,0.2)",
-                        "& .MuiLinearProgress-bar": {
-                          backgroundColor: "#b2f5ea",
-                        },
-                      }}
-                    />
-                    <Typography variant="caption">
-                      {stats.completed} of {stats.total} tasks
-                    </Typography>
-                  </Paper>
-                </Stack>
-              </Grid>
-            </Grid>
+            <Tabs 
+              value={tabValue} 
+              onChange={handleTabChange}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{
+                '& .MuiTab-root': {
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '1rem',
+                  py: 2,
+                },
+                '& .Mui-selected': {
+                  color: '#0f8f5f',
+                },
+                '& .MuiTabs-indicator': {
+                  backgroundColor: '#0f8f5f',
+                },
+              }}
+            >
+              <Tab 
+                icon={<Insights />} 
+                iconPosition="start" 
+                label="Overview" 
+              />
+              <Tab 
+                icon={<ShowChart />} 
+                iconPosition="start" 
+                label="Analytics" 
+              />
+              <Tab 
+                icon={<Settings />} 
+                iconPosition="start" 
+                label="Automation" 
+              />
+            </Tabs>
           </Paper>
 
-          {loading ? (
-            <Paper elevation={0} sx={{ p: 3, ...sectionPaperSx }}>
-              <LinearProgress />
-            </Paper>
-          ) : (
+          {/* Tab 0: Overview */}
+          {tabValue === 0 && (
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
-                <Paper
-                  elevation={0}
-                  sx={{
-                    p: 3,
-                    height: "100%",
-                    ...sectionPaperSx,
-                  }}
-                >
+                <Paper elevation={0} sx={{ p: 3, height: "100%", ...sectionPaperSx }}>
                   <Stack direction="row" spacing={1} alignItems="center" mb={2}>
                     <Insights color="primary" />
-                    <Typography variant="h6" fontWeight={700}>
-                      Category breakdown
-                    </Typography>
+                    <Typography variant="h6" fontWeight={700}>Category breakdown</Typography>
                   </Stack>
                   <Stack spacing={1.5}>
                     {categoryBreakdown.length === 0 && (
-                      <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                        Add tasks to see insights.
-                      </Typography>
+                      <Typography variant="body2" sx={{ opacity: 0.7 }}>Add tasks to see insights.</Typography>
                     )}
                     {categoryBreakdown.slice(0, 6).map((entry) => {
-                      const percent = stats.total
-                        ? Math.round((entry.count / stats.total) * 100)
-                        : 0;
+                      const percent = stats.total ? Math.round((entry.count / stats.total) * 100) : 0;
                       return (
                         <Box key={entry.category}>
-                          <Stack
-                            direction="row"
-                            justifyContent="space-between"
-                            alignItems="center"
-                          >
-                            <Typography variant="subtitle2" fontWeight={700}>
-                              {entry.category}
-                            </Typography>
-                            <Typography variant="caption">
-                              {entry.count} · {percent}%
-                            </Typography>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="subtitle2" fontWeight={700}>{entry.category}</Typography>
+                            <Typography variant="caption">{entry.count} · {percent}%</Typography>
                           </Stack>
-                          <LinearProgress
-                            variant="determinate"
-                            value={percent}
-                            sx={{ mt: 0.5, height: 10, borderRadius: 5 }}
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={percent} 
+                            sx={{ 
+                              mt: 0.5, 
+                              height: 10, 
+                              borderRadius: 5,
+                              backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : '#e0e0e0',
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: '#4caf50',
+                                borderRadius: 5,
+                              },
+                            }} 
                           />
                         </Box>
                       );
@@ -401,59 +471,33 @@ export default function InsightsPage() {
 
               <Grid item xs={12} md={6}>
                 <Stack spacing={3}>
-                  <Paper
-                    elevation={0}
-                    sx={{
-                      p: 3,
-                      ...sectionPaperSx,
-                    }}
-                  >
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={1}
-                      mb={1}
-                    >
+                  <Paper elevation={0} sx={{ p: 3, ...sectionPaperSx }}>
+                    <Stack direction="row" alignItems="center" spacing={1} mb={2}>
                       <Flag color="error" />
-                      <Typography variant="h6" fontWeight={700}>
-                        Priority mix
-                      </Typography>
+                      <Typography variant="h6" fontWeight={700}>Priority mix</Typography>
                     </Stack>
                     <Grid container spacing={2}>
                       {(["high", "medium", "low"] as const).map((priority) => {
-                        const totalForPriority =
-                          stats.priorityMap[priority] || 0;
-                        const percent = stats.total
-                          ? Math.round((totalForPriority / stats.total) * 100)
-                          : 0;
+                        const totalForPriority = stats.priorityMap[priority] || 0;
+                        const percent = stats.total ? Math.round((totalForPriority / stats.total) * 100) : 0;
+                        const colors = { high: '#f44336', medium: '#ff9800', low: '#4caf50' };
                         return (
                           <Grid item xs={12} sm={4} key={priority}>
-                            <Paper
-                              elevation={0}
-                              sx={{
-                                p: 2,
-                                backgroundColor: isDarkMode
-                                  ? "#14261f"
-                                  : "#f8fbf9",
+                            <Paper 
+                              elevation={0} 
+                              sx={{ 
+                                p: 2, 
+                                backgroundColor: isDarkMode ? "#14261f" : "#f8fbf9", 
                                 height: "100%",
+                                border: `1px solid ${colors[priority]}40`,
+                                borderRadius: 2,
                               }}
                             >
-                              <Typography
-                                variant="subtitle2"
-                                fontWeight={700}
-                                gutterBottom
-                              >
+                              <Typography variant="subtitle2" fontWeight={700} gutterBottom sx={{ color: colors[priority] }}>
                                 {priority.toUpperCase()}
                               </Typography>
-                              <Typography variant="h5" fontWeight={800}>
-                                {totalForPriority}
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                sx={{ opacity: 0.8 }}
-                              >
-                                {percent}% of total
-                              </Typography>
+                              <Typography variant="h4" fontWeight={800}>{totalForPriority}</Typography>
+                              <Typography variant="caption" sx={{ opacity: 0.8 }}>{percent}% of total</Typography>
                             </Paper>
                           </Grid>
                         );
@@ -461,56 +505,108 @@ export default function InsightsPage() {
                     </Grid>
                   </Paper>
 
-                  <Paper
-                    elevation={0}
-                    sx={{
-                      p: 3,
-                      ...sectionPaperSx,
-                    }}
-                  >
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={1}
-                      mb={1}
-                    >
+                  <Paper elevation={0} sx={{ p: 3, ...sectionPaperSx }}>
+                    <Stack direction="row" alignItems="center" spacing={1} mb={2}>
                       <CalendarMonth color="primary" />
-                      <Typography variant="h6" fontWeight={700}>
-                        Active timeline
-                      </Typography>
+                      <Typography variant="h6" fontWeight={700}>Active timeline</Typography>
                     </Stack>
-                    <Stack direction="row" spacing={1} flexWrap="wrap">
-                      <Chip
-                        label={`${stats.overdue} overdue`}
-                        color={stats.overdue ? "error" : "default"}
+                    <Stack direction="row" spacing={1} flexWrap="wrap" sx={chipGroupSx}>
+                      <Chip 
+                        label={`${stats.overdue} overdue`} 
+                        color={stats.overdue ? "error" : "default"} 
                         sx={chipTone}
+                        icon={<Flag />}
                       />
-                      <Chip
-                        label={`${stats.todayCount} due today`}
-                        color="primary"
-                        variant="outlined"
+                      <Chip 
+                        label={`${stats.todayCount} due today`} 
+                        color="primary" 
+                        variant="outlined" 
                         sx={chipTone}
+                        icon={<CalendarMonth />}
                       />
-                      <Chip
-                        label={`${stats.active} in progress`}
-                        variant="outlined"
+                      <Chip 
+                        label={`${stats.active} in progress`} 
+                        variant="outlined" 
                         sx={chipTone}
+                        icon={<RadioButtonUnchecked />}
                       />
                     </Stack>
-                    <Divider sx={{ my: 2 }} />
-                    <Typography variant="body2" gutterBottom>
+                    <Divider sx={{ my: 2, borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }} />
+                    <Typography variant="body2" gutterBottom fontWeight={500}>
                       Completion momentum
                     </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={stats.completionRate}
-                      sx={{ height: 10, borderRadius: 5 }}
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={stats.completionRate} 
+                      sx={{ 
+                        height: 10, 
+                        borderRadius: 5,
+                        backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : '#e0e0e0',
+                        '& .MuiLinearProgress-bar': {
+                          backgroundColor: '#4caf50',
+                          borderRadius: 5,
+                        },
+                      }} 
                     />
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      {stats.completed} of {stats.total} tasks completed
+                    </Typography>
                   </Paper>
                 </Stack>
               </Grid>
             </Grid>
           )}
+
+          {/* Tab 1: Advanced Analytics */}
+          {tabValue === 1 && (
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 3 }}>
+                <ShowChart sx={{ color: "#4caf50", fontSize: 32 }} />
+                <Typography variant="h5" fontWeight={800}>Advanced Analytics</Typography>
+                <Chip label="AI-Powered" size="small" color="primary" sx={{ ml: 1 }} />
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                📊 Deep dive into your productivity patterns with interactive charts and AI-powered insights
+              </Typography>
+              <AnalyticsDashboard tasks={todos} isDarkMode={isDarkMode} />
+            </Box>
+          )}
+
+          {/* Tab 2: Automation Rules */}
+          {tabValue === 2 && user && (
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 3 }}>
+                <Settings sx={{ color: "#0f8f5f", fontSize: 32 }} />
+                <Typography variant="h5" fontWeight={800}>Workflow Automation</Typography>
+                <Chip label="Beta" size="small" color="info" sx={{ ml: 1 }} />
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                🤖 Automate repetitive tasks and get smart notifications. Create rules that trigger based on task changes.
+              </Typography>
+              <AutomationRules 
+                userId={user.id} 
+                isDarkMode={isDarkMode}
+                onRuleTriggered={() => fetchTodos(user.id, false)}
+              />
+            </Box>
+          )}
+
+          {/* Export Info */}
+          <Paper 
+            elevation={0} 
+            sx={{ 
+              mt: 4, 
+              p: 2.5, 
+              backgroundColor: isDarkMode ? "#0f1f1a" : "#ffffff", 
+              textAlign: 'center',
+              borderRadius: 2,
+              border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}`,
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              📊 Export your data as CSV or PDF to analyze offline. The export includes all {stats.total} tasks with details.
+            </Typography>
+          </Paper>
         </Container>
       </Box>
     </ThemeProvider>

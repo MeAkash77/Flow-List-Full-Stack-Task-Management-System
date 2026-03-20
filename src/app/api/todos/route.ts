@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+// src/app/api/todos/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAccessToken } from "@/lib/auth";
 
 // Helper function to verify token and get userId
-async function verifyTokenAndGetUserId(request: Request) {
+async function verifyTokenAndGetUserId(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -21,9 +22,8 @@ async function verifyTokenAndGetUserId(request: Request) {
 }
 
 // CREATE TODO
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
     const auth = await verifyTokenAndGetUserId(request);
     if (auth.error) {
       return NextResponse.json(
@@ -32,54 +32,41 @@ export async function POST(request: Request) {
       );
     }
 
-    const { userId, task, category, priority, status, dueDate, notes } =
-      await request.json();
+    const { task, category, priority, dueDate, notes } = await request.json();
 
-    // Ensure the userId from token matches the request
-    if (auth.userId !== userId) {
+    if (!task) {
       return NextResponse.json(
-        { error: "Forbidden" },
-        { status: 403 }
-      );
-    }
-
-    if (!userId || !task) {
-      return NextResponse.json(
-        { error: "User ID and task are required" },
+        { error: "Task is required" },
         { status: 400 }
       );
     }
 
-    // Create todo with all fields including status
     const newTodo = await prisma.task.create({
       data: {
         title: task,
         category: category || "General",
         priority: priority || "medium",
-        status: status || "todo",
         dueDate: dueDate || null,
         notes: notes || "",
-        userId,
+        userId: auth.userId,
         completed: false,
       },
     });
 
-    // Format the response to match TodoItem type with status
     const formattedTodo = {
       id: newTodo.id,
       task: newTodo.title,
       category: newTodo.category || "General",
       priority: (newTodo.priority as "high" | "medium" | "low") || "medium",
-      status: (newTodo.status as "todo" | "in-progress" | "done") || "todo",
       dueDate: newTodo.dueDate || "",
       notes: newTodo.notes || "",
       completed: newTodo.completed,
       createdAt: newTodo.createdAt,
     };
 
-    // 🔥 Emit real-time update for new task (with safe check)
-    if (typeof global !== 'undefined' && global.io) {
-      global.io.emit("task-created-synced", { 
+    // Emit real-time update
+    if (typeof global !== 'undefined' && (global as any).io) {
+      (global as any).io.emit("task-created-synced", { 
         task: formattedTodo, 
         userId: auth.userId 
       });
@@ -95,10 +82,9 @@ export async function POST(request: Request) {
   }
 }
 
-// GET TODOS WITH PAGINATION
-export async function GET(request: Request) {
+// GET TODOS WITH PAGINATION, SEARCH, AND FILTERS
+export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
     const auth = await verifyTokenAndGetUserId(request);
     if (auth.error) {
       return NextResponse.json(
@@ -108,37 +94,50 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const requestedUserId = searchParams.get("userId");
-    const statusFilter = searchParams.get("status");
-    const search = searchParams.get("search") || "";
     
     // Pagination parameters
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
     const skip = (page - 1) * limit;
+    
+    // Search parameter
+    const search = searchParams.get("search") || "";
+    
+    // Filters
+    const statusFilter = searchParams.get("status"); // "active", "completed"
+    const categoryFilter = searchParams.get("category"); // category name or "all"
+    const priorityFilter = searchParams.get("priority"); // "high", "medium", "low"
 
-    // Ensure users can only access their own todos
-    if (requestedUserId && requestedUserId !== auth.userId) {
-      return NextResponse.json(
-        { error: "Forbidden" },
-        { status: 403 }
-      );
-    }
-
-    // Build where clause with optional status filter and search
+    // Build where clause
     const whereClause: any = { userId: auth.userId };
-    if (statusFilter) {
-      whereClause.status = statusFilter;
-    }
+    
+    // Add search filter (case insensitive)
     if (search) {
       whereClause.title = {
         contains: search,
         mode: 'insensitive'
       };
     }
+    
+    // Add status filter
+    if (statusFilter === "active") {
+      whereClause.completed = false;
+    } else if (statusFilter === "completed") {
+      whereClause.completed = true;
+    }
+    
+    // Add category filter
+    if (categoryFilter && categoryFilter !== "all" && categoryFilter !== "today") {
+      whereClause.category = categoryFilter;
+    }
+    
+    // Add priority filter
+    if (priorityFilter && priorityFilter !== "all") {
+      whereClause.priority = priorityFilter;
+    }
 
-    // Execute both queries in parallel for better performance
-    const [todos, total] = await Promise.all([
+    // Execute queries in parallel
+    const [tasks, total] = await Promise.all([
       prisma.task.findMany({
         where: whereClause,
         orderBy: { createdAt: "desc" },
@@ -150,50 +149,53 @@ export async function GET(request: Request) {
       })
     ]);
 
-    // Format todos to match TodoItem type with status
-    const formattedTodos = todos.map(todo => ({
-      id: todo.id,
-      task: todo.title,
-      category: todo.category || "General",
-      priority: (todo.priority as "high" | "medium" | "low") || "medium",
-      status: (todo.status as "todo" | "in-progress" | "done") || "todo",
-      dueDate: todo.dueDate || "",
-      notes: todo.notes || "",
-      completed: todo.completed,
-      createdAt: todo.createdAt,
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(total / limit);
+    const hasNext = page < totalPages;
+    const hasPrev = page > 1;
+
+    // Format tasks
+    const formattedTasks = tasks.map(task => ({
+      id: task.id,
+      task: task.title,
+      category: task.category || "General",
+      priority: (task.priority as "high" | "medium" | "low") || "medium",
+      dueDate: task.dueDate || "",
+      notes: task.notes || "",
+      completed: task.completed,
+      createdAt: task.createdAt,
     }));
 
-    // Return paginated response
     return NextResponse.json({
-      tasks: formattedTodos,
+      tasks: formattedTasks,
       pagination: {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit),
-        hasMore: page < Math.ceil(total / limit)
+        totalPages,
+        hasNext,
+        hasPrev,
       }
     });
   } catch (error) {
     console.error("Error fetching todos:", error);
-    // Return empty paginated response on error
     return NextResponse.json({ 
       tasks: [], 
       pagination: { 
         page: 1, 
         limit: 10, 
         total: 0, 
-        pages: 0,
-        hasMore: false 
+        totalPages: 0,
+        hasNext: false, 
+        hasPrev: false 
       } 
     });
   }
 }
 
-// UPDATE TODO (toggle completed OR update status) - WITH SOCKET EMISSION
-export async function PATCH(request: Request) {
+// UPDATE TODO (toggle completed)
+export async function PATCH(request: NextRequest) {
   try {
-    // Verify authentication
     const auth = await verifyTokenAndGetUserId(request);
     if (auth.error) {
       return NextResponse.json(
@@ -202,7 +204,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const { todoId, completed, status } = await request.json();
+    const { todoId, completed } = await request.json();
 
     if (!todoId) {
       return NextResponse.json(
@@ -211,7 +213,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Verify the todo belongs to the authenticated user
+    // Verify the todo belongs to the user
     const existingTodo = await prisma.task.findFirst({
       where: { 
         id: todoId,
@@ -226,48 +228,25 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Build update data dynamically
-    const updateData: any = {};
-    if (completed !== undefined) updateData.completed = completed;
-    if (status !== undefined) updateData.status = status;
-
-    // If no fields to update, return existing todo
-    if (Object.keys(updateData).length === 0) {
-      const formattedTodo = {
-        id: existingTodo.id,
-        task: existingTodo.title,
-        category: existingTodo.category || "General",
-        priority: (existingTodo.priority as "high" | "medium" | "low") || "medium",
-        status: (existingTodo.status as "todo" | "in-progress" | "done") || "todo",
-        dueDate: existingTodo.dueDate || "",
-        notes: existingTodo.notes || "",
-        completed: existingTodo.completed,
-        createdAt: existingTodo.createdAt,
-      };
-      return NextResponse.json(formattedTodo);
-    }
-
     const updated = await prisma.task.update({
       where: { id: todoId },
-      data: updateData,
+      data: { completed: completed !== undefined ? completed : !existingTodo.completed },
     });
 
-    // Format the response to match TodoItem type
     const formattedTodo = {
       id: updated.id,
       task: updated.title,
       category: updated.category || "General",
       priority: (updated.priority as "high" | "medium" | "low") || "medium",
-      status: (updated.status as "todo" | "in-progress" | "done") || "todo",
       dueDate: updated.dueDate || "",
       notes: updated.notes || "",
       completed: updated.completed,
       createdAt: updated.createdAt,
     };
 
-    // 🔥 Emit real-time update via socket (with safe check)
-    if (typeof global !== 'undefined' && global.io) {
-      global.io.emit("task-synced", { 
+    // Emit real-time update
+    if (typeof global !== 'undefined' && (global as any).io) {
+      (global as any).io.emit("task-synced", { 
         task: formattedTodo, 
         userId: auth.userId 
       });
@@ -284,9 +263,8 @@ export async function PATCH(request: Request) {
 }
 
 // UPDATE FULL TODO
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   try {
-    // Verify authentication
     const auth = await verifyTokenAndGetUserId(request);
     if (auth.error) {
       return NextResponse.json(
@@ -295,16 +273,15 @@ export async function PUT(request: Request) {
       );
     }
 
-    const { todoId, task, category, priority, status, dueDate, notes, completed } = await request.json();
+    const { todoId, task, category, priority, dueDate, notes, completed } = await request.json();
 
-    if (!todoId) {
+    if (!todoId || !task) {
       return NextResponse.json(
-        { error: "Todo ID is required" },
+        { error: "Todo ID and task are required" },
         { status: 400 }
       );
     }
 
-    // Verify the todo belongs to the authenticated user
     const existingTodo = await prisma.task.findFirst({
       where: { 
         id: todoId,
@@ -319,14 +296,12 @@ export async function PUT(request: Request) {
       );
     }
 
-    // Update all fields including status
     const updated = await prisma.task.update({
       where: { id: todoId },
       data: {
         title: task,
         category: category,
         priority: priority,
-        status: status,
         dueDate: dueDate,
         notes: notes,
         completed: completed,
@@ -338,16 +313,14 @@ export async function PUT(request: Request) {
       task: updated.title,
       category: updated.category || "General",
       priority: (updated.priority as "high" | "medium" | "low") || "medium",
-      status: (updated.status as "todo" | "in-progress" | "done") || "todo",
       dueDate: updated.dueDate || "",
       notes: updated.notes || "",
       completed: updated.completed,
       createdAt: updated.createdAt,
     };
 
-    // 🔥 Emit real-time update via socket for full updates too (with safe check)
-    if (typeof global !== 'undefined' && global.io) {
-      global.io.emit("task-synced", { 
+    if (typeof global !== 'undefined' && (global as any).io) {
+      (global as any).io.emit("task-synced", { 
         task: formattedTodo, 
         userId: auth.userId 
       });
@@ -364,9 +337,8 @@ export async function PUT(request: Request) {
 }
 
 // DELETE TODO
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
-    // Verify authentication
     const auth = await verifyTokenAndGetUserId(request);
     if (auth.error) {
       return NextResponse.json(
@@ -384,7 +356,6 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // Verify the todo belongs to the authenticated user
     const existingTodo = await prisma.task.findFirst({
       where: { 
         id: todoId,
@@ -403,9 +374,8 @@ export async function DELETE(request: Request) {
       where: { id: todoId },
     });
 
-    // 🔥 Emit real-time delete event (with safe check)
-    if (typeof global !== 'undefined' && global.io) {
-      global.io.emit("task-deleted-synced", { 
+    if (typeof global !== 'undefined' && (global as any).io) {
+      (global as any).io.emit("task-deleted-synced", { 
         taskId: todoId, 
         userId: auth.userId 
       });

@@ -16,6 +16,7 @@ model User {
   password     String
   refreshToken String?
   tasks        Task[]
+  automationRules AutomationRule[] // 👈 User's automation rules
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -25,7 +26,7 @@ model Task {
   title     String
   category  String   @default("General")
   priority  String   @default("medium")
-  status    String   @default("todo") // NEW: todo, in-progress, done
+  status    String   @default("todo") // todo, in-progress, done
   dueDate   String?
   notes     String?
   completed Boolean  @default(false)
@@ -35,5 +36,87 @@ model Task {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
-  @@index([status]) // Add index for faster queries by status
+  @@index([status])
+  @@index([dueDate])
+  @@index([completed])
+}
+
+// Automation Rules Model
+model AutomationRule {
+  id           String      @id @default(uuid())
+  userId       String
+  name         String      // "High Priority Alert", "Due Date Reminder", etc.
+  isActive     Boolean     @default(true)
+  triggerType  TriggerType // When should this rule trigger?
+  triggerValue String?     // For DUE_DATE_APPROACHING: "2h", "1d", "1w"
+  condition    Json?       // Additional conditions: { priority: "high", category: "Work", status: "todo" }
+  actionType   ActionType  // What action to take?
+  actionValue  Json?       // Action details: { message: "Task due soon!", priority: "high", status: "done" }
+  lastTriggered DateTime?  // When was this rule last triggered? (to prevent spam)
+  triggerCount  Int        @default(0) // How many times has this rule triggered?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs         AutomationLog[] // 👈 FIXED: Added opposite relation field
+
+  @@index([userId])
+  @@index([isActive])
+  @@index([triggerType])
+  @@index([lastTriggered])
+}
+
+// Enums for Automation Rules
+enum TriggerType {
+  TASK_CREATED           // When a new task is created
+  TASK_UPDATED           // When any task field is updated
+  TASK_COMPLETED         // When a task is marked as completed
+  TASK_DELETED           // When a task is deleted
+  DUE_DATE_APPROACHING   // When due date is approaching
+  DUE_DATE_PASSED        // When due date has passed
+  PRIORITY_CHANGED       // When priority changes
+  CATEGORY_CHANGED       // When category changes
+  STATUS_CHANGED         // When status changes (todo -> in-progress -> done)
+  OVERDUE_TASK           // When a task becomes overdue
+  HIGH_PRIORITY_ADDED    // When a high priority task is added
+  WEEKLY_SUMMARY         // Weekly summary of tasks
+  DAILY_REMINDER         // Daily reminder for pending tasks
+}
+
+enum ActionType {
+  NOTIFY                 // Send a notification/toast
+  UPDATE_TASK            // Automatically update task fields
+  CREATE_TASK            // Create a new task
+  ARCHIVE                // Archive the task
+  ADD_COMMENT            // Add a comment/note to task
+  CHANGE_DUE_DATE        // Change due date (e.g., extend by 1 day)
+  CHANGE_PRIORITY        // Change priority level
+  CHANGE_STATUS          // Change status
+  SEND_EMAIL             // Send email notification
+  ADD_LABEL              // Add a label/tag
+  REMOVE_LABEL           // Remove a label/tag
+  ASSIGN_USER            // Assign to another user
+  MOVE_TO_BOARD          // Move to a specific board column
+  SCHEDULE_REMINDER      // Schedule a reminder
+}
+
+// For tracking automation execution history (useful for debugging)
+model AutomationLog {
+  id               String         @id @default(uuid())
+  ruleId           String
+  rule             AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  taskId           String?        // Related task ID
+  userId           String
+  triggerType      TriggerType
+  actionType       ActionType
+  triggerData      Json?          // What triggered this?
+  actionData       Json?          // What action was taken?
+  success          Boolean        @default(true)
+  errorMessage     String?
+  executedAt       DateTime       @default(now())
+  
+  @@index([ruleId])
+  @@index([taskId])
+  @@index([userId])
+  @@index([executedAt])
 }

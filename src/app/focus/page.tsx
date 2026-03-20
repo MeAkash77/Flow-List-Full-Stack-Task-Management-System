@@ -104,7 +104,6 @@ export default function FocusPage() {
     }
   };
 
-  // ✅ FIXED: Handle paginated API response
   const fetchTodos = async (userId: string, showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
@@ -116,21 +115,16 @@ export default function FocusPage() {
       });
       const data = await response.json();
       
-      // ✅ Handle paginated response format
       let todosArray: TodoItem[] = [];
       
       if (Array.isArray(data)) {
-        // Old format: direct array of tasks
         todosArray = data;
       } else if (data.tasks && Array.isArray(data.tasks)) {
-        // New paginated format: { tasks: [], pagination: {...} }
         todosArray = data.tasks;
       } else {
-        // Fallback for any other format
         todosArray = [];
       }
       
-      console.log("Focus page - fetched tasks:", todosArray.length);
       setTodos(todosArray);
     } catch (err) {
       console.error("Error fetching todos:", err);
@@ -179,6 +173,7 @@ export default function FocusPage() {
   useEffect(() => {
     if (secondsLeft === 0 && isRunning) {
       setIsRunning(false);
+      // Optional: Play sound or notification
     }
   }, [secondsLeft, isRunning]);
 
@@ -189,12 +184,20 @@ export default function FocusPage() {
     return end;
   }, [today]);
 
-  // ✅ FIXED: Safe focus candidates with array check
+  // ✅ FIXED: Ensure unique tasks by using Map to remove duplicates
   const focusCandidates = useMemo(() => {
     const todosArray = Array.isArray(todos) ? todos : [];
     
-    const ranked = todosArray
-      .filter((t) => !t.completed)
+    // First, filter active tasks
+    const activeTasks = todosArray.filter(t => !t.completed);
+    
+    // ✅ Remove duplicates by ID using Map
+    const uniqueTasks = Array.from(
+      new Map(activeTasks.map(task => [task.id, task])).values()
+    );
+    
+    // Rank and sort tasks
+    const ranked = uniqueTasks
       .sort((a, b) => {
         const aDate = parseDate(a.dueDate);
         const bDate = parseDate(b.dueDate);
@@ -221,7 +224,15 @@ export default function FocusPage() {
       return date && date < today;
     });
 
-    return [...overdue, ...todayTasks, ...ranked].slice(0, 6);
+    // Combine: overdue first, then today's tasks, then the rest
+    const combined = [...overdue, ...todayTasks, ...ranked];
+    
+    // ✅ Remove any remaining duplicates and limit to 6
+    const finalUnique = Array.from(
+      new Map(combined.map(task => [task.id, task])).values()
+    );
+    
+    return finalUnique.slice(0, 6);
   }, [todos, today, todayEnd]);
 
   const formatTime = (totalSeconds: number) => {
@@ -236,19 +247,21 @@ export default function FocusPage() {
     if (!user) return;
     try {
       const accessToken = localStorage.getItem("accessToken");
-      const response = await fetch(`/api/todos`, {
+      const response = await fetch(`/api/todos/${todoId}/toggle`, {
         method: "PATCH",
         headers: { 
           "Content-Type": "application/json",
           "Authorization": `Bearer ${accessToken}`
         },
-        body: JSON.stringify({
-          userId: user.id,
-          todoId,
-          completed: !todos.find((t) => t.id === todoId)?.completed,
-        }),
       });
-      if (response.ok) await fetchTodos(user.id);
+      if (response.ok) {
+        await fetchTodos(user.id);
+        // If the active task was completed, clear it
+        if (activeTask?.id === todoId) {
+          setActiveTask(null);
+          setIsRunning(false);
+        }
+      }
     } catch (err) {
       console.error("Error toggling completion:", err);
     }

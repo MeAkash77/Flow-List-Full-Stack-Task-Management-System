@@ -37,6 +37,7 @@ import {
   Lock,
 } from "@mui/icons-material";
 import { getAppTheme } from "./theme";
+import { motion, useInView } from "framer-motion";
 
 interface FeatureCard {
   title: string;
@@ -506,14 +507,183 @@ function AnimatedMetricCard({
   );
 }
 
+// ✨ NEW: Floating Particles Animation Component
+const FloatingParticles = () => {
+  const particles = Array.from({ length: 40 }, (_, i) => ({
+    id: i,
+    size: Math.random() * 5 + 2,
+    left: Math.random() * 100,
+    delay: Math.random() * 15,
+    duration: Math.random() * 20 + 12,
+    opacity: Math.random() * 0.4 + 0.1,
+  }));
+
+  return (
+    <Box sx={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
+      {particles.map((particle) => (
+        <motion.div
+          key={particle.id}
+          style={{
+            position: "absolute",
+            bottom: -20,
+            left: `${particle.left}%`,
+            width: particle.size,
+            height: particle.size,
+            backgroundColor: `rgba(76, 175, 80, ${particle.opacity})`,
+            borderRadius: "50%",
+            pointerEvents: "none",
+          }}
+          animate={{
+            y: ["0vh", "120vh"],
+            x: [0, Math.sin(particle.id) * 30],
+            opacity: [0.5, 0],
+          }}
+          transition={{
+            duration: particle.duration,
+            delay: particle.delay,
+            repeat: Infinity,
+            ease: "linear",
+          }}
+        />
+      ))}
+    </Box>
+  );
+};
+
+// ✨ NEW: Animated Gradient Background
+const AnimatedGradient = ({ isDarkMode }: { isDarkMode: boolean }) => {
+  return (
+    <Box
+      sx={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        zIndex: 0,
+      }}
+    >
+      <motion.div
+        style={{
+          position: "absolute",
+          width: "200%",
+          height: "200%",
+          background: isDarkMode
+            ? "radial-gradient(circle at 30% 40%, rgba(76,175,80,0.3) 0%, rgba(33,150,243,0.2) 50%, rgba(156,39,176,0.1) 100%)"
+            : "radial-gradient(circle at 30% 40%, rgba(76,175,80,0.2) 0%, rgba(33,150,243,0.15) 50%, rgba(156,39,176,0.05) 100%)",
+          top: "-50%",
+          left: "-50%",
+        }}
+        animate={{
+          rotate: [0, 360],
+          scale: [1, 1.1, 1],
+        }}
+        transition={{
+          duration: 40,
+          repeat: Infinity,
+          ease: "linear",
+        }}
+      />
+      <motion.div
+        style={{
+          position: "absolute",
+          width: "150%",
+          height: "150%",
+          background: isDarkMode
+            ? "radial-gradient(circle at 70% 60%, rgba(33,150,243,0.25) 0%, rgba(76,175,80,0.15) 50%, rgba(255,152,0,0.1) 100%)"
+            : "radial-gradient(circle at 70% 60%, rgba(33,150,243,0.18) 0%, rgba(76,175,80,0.1) 50%, rgba(255,152,0,0.05) 100%)",
+          top: "-25%",
+          left: "-25%",
+        }}
+        animate={{
+          rotate: [360, 0],
+          scale: [1, 1.2, 1],
+        }}
+        transition={{
+          duration: 35,
+          repeat: Infinity,
+          ease: "linear",
+        }}
+      />
+    </Box>
+  );
+};
+
+// ✨ NEW: Animated Counter with Scroll Trigger
+const ScrollAnimatedCounter = ({ 
+  target, 
+  suffix = "", 
+  prefix = "", 
+  duration = 2000 
+}: { 
+  target: number; 
+  suffix?: string; 
+  prefix?: string; 
+  duration?: number;
+}) => {
+  const [count, setCount] = useState(0);
+  const ref = useRef<HTMLParagraphElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+
+  useEffect(() => {
+    if (isInView) {
+      const step = target / (duration / 16);
+      let current = 0;
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) {
+          setCount(target);
+          clearInterval(timer);
+        } else {
+          setCount(Math.floor(current));
+        }
+      }, 16);
+      return () => clearInterval(timer);
+    }
+  }, [isInView, target, duration]);
+
+  return (
+    <Typography ref={ref} variant="h2" fontWeight={800} sx={{ fontSize: { xs: "2rem", md: "3rem" } }}>
+      {prefix}{count.toLocaleString()}{suffix}
+    </Typography>
+  );
+};
+
+// ✨ NEW: Fade In When Visible Component
+const FadeInWhenVisible = ({ 
+  children, 
+  delay = 0, 
+  yOffset = 30 
+}: { 
+  children: React.ReactNode; 
+  delay?: number; 
+  yOffset?: number;
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: yOffset }}
+      animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: yOffset }}
+      transition={{ duration: 0.6, delay }}
+    >
+      {children}
+    </motion.div>
+  );
+};
+
 export default function LandingPage() {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [user, setUser] = useState<{ id: number; username: string } | null>(
     null,
   );
   const prefersReducedMotion = usePrefersReducedMotion();
 
-  const theme = useMemo(() => getAppTheme(isDarkMode), [isDarkMode]);
+  const theme = useMemo(() => 
+    mounted ? getAppTheme(isDarkMode) : getAppTheme(true), 
+    [isDarkMode, mounted]
+  );
 
   const sectionPaperSx = {
     backgroundColor: isDarkMode ? "#0f1f1a" : "#ffffff",
@@ -532,20 +702,35 @@ export default function LandingPage() {
   const currentYear = new Date().getFullYear();
 
   useEffect(() => {
-    const storedUser = JSON.parse(
-      localStorage.getItem("currentUser") || "null",
-    ) as { id: number; username: string } | null;
+    setMounted(true);
+    
+    const storedDarkMode = JSON.parse(
+      localStorage.getItem("darkMode") || "true"
+    ) as boolean;
+    setIsDarkMode(storedDarkMode);
 
+    const storedUser = JSON.parse(
+      localStorage.getItem("currentUser") || "null"
+    ) as { id: number; username: string } | null;
     if (storedUser) {
       setUser(storedUser);
     }
-
-    const prefersDarkMode = JSON.parse(
-      localStorage.getItem("darkMode") || "true",
-    ) as boolean;
-
-    setIsDarkMode(prefersDarkMode);
   }, []);
+
+  // Show a simple loading state on first render to match server
+  if (!mounted) {
+    return (
+      <div style={{ 
+        minHeight: "100vh", 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "center",
+        fontFamily: "system-ui, -apple-system, sans-serif"
+      }}>
+        <div>Loading Flowlist...</div>
+      </div>
+    );
+  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -561,6 +746,11 @@ export default function LandingPage() {
           color: isDarkMode ? "#e7f4ed" : "#0d2621",
         }}
       >
+        {/* ✨ NEW: Animated Background */}
+        <AnimatedGradient isDarkMode={isDarkMode} />
+        <FloatingParticles />
+
+        {/* Original background gradients - kept for compatibility */}
         <Box
           sx={{
             position: "absolute",
@@ -851,6 +1041,7 @@ export default function LandingPage() {
             </Paper>
           </Reveal>
 
+          {/* ✨ NEW: Stats section with animated counters */}
           <Grid container spacing={2} sx={{ mt: { xs: 0.4, md: 1 } }}>
             {metricCards.map((metric, index) => (
               <Grid item xs={12} sm={6} lg={3} key={metric.label}>

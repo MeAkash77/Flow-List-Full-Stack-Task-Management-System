@@ -46,7 +46,7 @@ export default function AppFooter() {
           <Link href="/swagger" className="app-footer__link">
             Swagger UI
           </Link>
-          <span>Copyright {year} Flowlist</span>
+          <span>Copyright {year} Flowlist Made by Akash (2026)</span>
         </div>
       </div>
     </footer>

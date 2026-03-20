@@ -46,6 +46,7 @@ import {
 } from "@mui/icons-material";
 import { CSSTransition, TransitionGroup } from "react-transition-group";
 import NavBar from "../components/NavBar";
+import GeminiAIAssistant from "../components/GeminiAIAssistant";
 import { TodoItem, TodoPriority } from "@/types/todo";
 import { getAppTheme } from "../theme";
 import "../page.css";
@@ -168,14 +169,9 @@ export default function Home() {
       let todosArray: TodoItem[] = [];
       
       if (Array.isArray(data)) {
-        // Old format: array of tasks
         todosArray = data;
       } else if (data.tasks && Array.isArray(data.tasks)) {
-        // New format with pagination: { tasks: [], pagination: {...} }
         todosArray = data.tasks;
-      } else {
-        // Fallback to empty array
-        todosArray = [];
       }
       
       if (!isEqual(todosArray, todosRef.current)) {
@@ -208,7 +204,6 @@ export default function Home() {
           : "Good Morning",
     );
 
-    // Check for both user and token
     const accessToken = localStorage.getItem("accessToken");
     const storedUser = JSON.parse(
       localStorage.getItem("currentUser") || "null",
@@ -223,7 +218,25 @@ export default function Home() {
     fetchTodos(storedUser.id, true);
   }, [router]);
 
-  // ✅ UPDATED: Add Todo with toast
+  // ✅ AI Assistant: Handle AI-suggested tasks
+  const handleAITaskAdd = (taskData: any) => {
+    setTask(taskData.task);
+    setCategory(taskData.category);
+    setPriority(taskData.priority);
+    setDueDate(taskData.dueDate || '');
+    setNotes(taskData.notes || '');
+    
+    // Focus on the task input field
+    setTimeout(() => {
+      taskInputRef.current?.focus();
+    }, 100);
+    
+    toast.success("✨ AI suggested task ready for review!", {
+      icon: "🤖",
+      duration: 3000,
+    });
+  };
+
   const addTodo = async () => {
     if (!task.trim() || !user) return;
     setSaving(true);
@@ -269,7 +282,6 @@ export default function Home() {
     }
   };
 
-  // ✅ UPDATED: Toggle Completion with toast
   const toggleCompletion = async (todoId: string) => {
     if (!user) return;
     setSaving(true);
@@ -278,17 +290,12 @@ export default function Home() {
     
     try {
       const accessToken = localStorage.getItem("accessToken");
-      const response = await fetch(`/api/todos`, {
+      const response = await fetch(`/api/todos/${todoId}/toggle`, {
         method: "PATCH",
         headers: { 
           "Content-Type": "application/json",
           "Authorization": `Bearer ${accessToken}`
         },
-        body: JSON.stringify({
-          userId: user.id,
-          todoId,
-          completed: !todos.find((t) => t.id === todoId)?.completed,
-        }),
       });
       
       if (response.ok) {
@@ -305,7 +312,6 @@ export default function Home() {
     }
   };
 
-  // ✅ UPDATED: Delete Todo with toast
   const deleteTodo = async (todoId: string) => {
     if (!user) return;
     setSaving(true);
@@ -340,7 +346,6 @@ export default function Home() {
     }
   };
 
-  // ✅ UPDATED: Save Edit with toast
   const saveEdit = async () => {
     if (!editingTodo || !user) return;
     setSaving(true);
@@ -391,7 +396,6 @@ export default function Home() {
   }, [today]);
 
   const filteredTodos = useMemo(() => {
-    // Ensure todos is an array
     const todosArray = Array.isArray(todos) ? todos : [];
     
     const order: Record<TodoPriority, number> = {
@@ -400,7 +404,6 @@ export default function Home() {
       low: 2,
     };
 
-    // Safe search function with null checks
     const matchesSearch = (todo: TodoItem) => {
       const taskText = todo?.task?.toLowerCase() || "";
       const notesText = todo?.notes?.toLowerCase() || "";
@@ -739,9 +742,6 @@ export default function Home() {
                         onChange={(e) => setTask(e.target.value)}
                         sx={fieldBaseSx}
                         disabled={saving}
-                        inputProps={{
-                          'aria-label': 'task description',
-                        }}
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
@@ -753,10 +753,7 @@ export default function Home() {
                     </Grid>
                     <Grid item xs={12} md={5}>
                       <FormControl fullWidth sx={fieldBaseSx}>
-                        <InputLabel
-                          sx={{ color: theme.palette.text.secondary }}
-                          id="category-label"
-                        >
+                        <InputLabel id="category-label">
                           Category
                         </InputLabel>
                         <Select
@@ -768,9 +765,6 @@ export default function Home() {
                           onChange={(e) => setCategory(e.target.value)}
                           sx={fieldBaseSx}
                           disabled={saving}
-                          inputProps={{
-                            'aria-label': 'category',
-                          }}
                         >
                           {categories.map((cat) => (
                             <MenuItem key={`new-cat-${cat}`} value={cat}>
@@ -782,12 +776,7 @@ export default function Home() {
                     </Grid>
                     <Grid item xs={12} md={4}>
                       <FormControl fullWidth sx={fieldBaseSx}>
-                        <InputLabel
-                          sx={{ color: theme.palette.text.secondary }}
-                          id="priority-label"
-                        >
-                          Priority
-                        </InputLabel>
+                        <InputLabel id="priority-label">Priority</InputLabel>
                         <Select
                           labelId="priority-label"
                           id="priority"
@@ -799,9 +788,6 @@ export default function Home() {
                           }
                           sx={fieldBaseSx}
                           disabled={saving}
-                          inputProps={{
-                            'aria-label': 'priority',
-                          }}
                         >
                           <MenuItem key="priority-high" value="high">High</MenuItem>
                           <MenuItem key="priority-medium" value="medium">Medium</MenuItem>
@@ -821,9 +807,6 @@ export default function Home() {
                         onChange={(e) => setDueDate(e.target.value)}
                         sx={fieldBaseSx}
                         disabled={saving}
-                        inputProps={{
-                          'aria-label': 'due date',
-                        }}
                       />
                     </Grid>
                     <Grid item xs={12} md={4}>
@@ -837,9 +820,6 @@ export default function Home() {
                         onChange={(e) => setNotes(e.target.value)}
                         sx={fieldBaseSx}
                         disabled={saving}
-                        inputProps={{
-                          'aria-label': 'notes',
-                        }}
                       />
                     </Grid>
                   </Grid>
@@ -893,9 +873,6 @@ export default function Home() {
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         size="small"
-                        inputProps={{
-                          'aria-label': 'search tasks',
-                        }}
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
@@ -913,9 +890,6 @@ export default function Home() {
                           value={sortBy}
                           label="Sort"
                           onChange={(e) => setSortBy(e.target.value)}
-                          inputProps={{
-                            'aria-label': 'sort by',
-                          }}
                         >
                           <MenuItem key="sort-recent" value="recent">Newest first</MenuItem>
                           <MenuItem key="sort-dueDate" value="dueDate">Due date</MenuItem>
@@ -1090,7 +1064,6 @@ export default function Home() {
                                       todo.completed ? "primary" : "default"
                                     }
                                     onClick={() => toggleCompletion(todo.id)}
-                                    aria-label={todo.completed ? "mark as active" : "mark as done"}
                                   >
                                     {todo.completed ? (
                                       <CheckCircle />
@@ -1167,7 +1140,6 @@ export default function Home() {
                                       setEditingTodo(todo);
                                       setEditOpen(true);
                                     }}
-                                    aria-label="edit task"
                                   >
                                     <Edit />
                                   </IconButton>
@@ -1176,7 +1148,6 @@ export default function Home() {
                                   <IconButton
                                     color="error"
                                     onClick={() => deleteTodo(todo.id)}
-                                    aria-label="delete task"
                                   >
                                     <Delete />
                                   </IconButton>
@@ -1407,9 +1378,6 @@ export default function Home() {
                       : null,
                   )
                 }
-                inputProps={{
-                  'aria-label': 'edit task',
-                }}
               />
               <FormControl fullWidth>
                 <InputLabel id="edit-category-label">Category</InputLabel>
@@ -1426,9 +1394,6 @@ export default function Home() {
                         : null,
                     )
                   }
-                  inputProps={{
-                    'aria-label': 'edit category',
-                  }}
                 >
                   {categories.map((cat) => (
                     <MenuItem key={`edit-cat-${cat}`} value={cat}>
@@ -1455,9 +1420,6 @@ export default function Home() {
                         : null,
                     )
                   }
-                  inputProps={{
-                    'aria-label': 'edit priority',
-                  }}
                 >
                   <MenuItem key="edit-priority-high" value="high">High</MenuItem>
                   <MenuItem key="edit-priority-medium" value="medium">Medium</MenuItem>
@@ -1478,9 +1440,6 @@ export default function Home() {
                       : null,
                   )
                 }
-                inputProps={{
-                  'aria-label': 'edit due date',
-                }}
               />
               <TextField
                 id="edit-notes"
@@ -1495,9 +1454,6 @@ export default function Home() {
                       : null,
                   )
                 }
-                inputProps={{
-                  'aria-label': 'edit notes',
-                }}
               />
             </Stack>
           </DialogContent>
@@ -1509,6 +1465,13 @@ export default function Home() {
           </DialogActions>
         </Dialog>
       </Box>
+
+      {/* ✅ Gemini AI Assistant - Floating button at bottom right */}
+      <GeminiAIAssistant 
+        onAddTask={handleAITaskAdd} 
+        tasks={todos}
+        onRefresh={() => user && fetchTodos(user.id, true)}
+      />
     </ThemeProvider>
   );
 }
